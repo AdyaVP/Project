@@ -1,0 +1,202 @@
+// Prisma Schema - Base de datos para CRM
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql" // o "mysql", "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== MODELOS ====================
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      Role     @default(CLIENTE)
+  phone     String?
+  avatar    String?
+  status    Status   @default(active)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relaciones
+  reservations    Reservation[]
+  invoices        Invoice[]
+  createdClients  Client[]      @relation("CreatedBy")
+  approvedClients Client[]      @relation("ApprovedBy")
+
+  @@map("users")
+}
+
+model Client {
+  id         String   @id @default(uuid())
+  name       String
+  email      String   @unique
+  phone      String
+  company    String?
+  country    String
+  status     ClientStatus @default(active)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  createdBy  String
+  approvedBy String?
+
+  // Relaciones
+  creator      User         @relation("CreatedBy", fields: [createdBy], references: [id])
+  approver     User?        @relation("ApprovedBy", fields: [approvedBy], references: [id])
+  reservations Reservation[]
+  invoices     Invoice[]
+  contracts    Contract[]
+
+  @@map("clients")
+}
+
+model Vehicle {
+  id         String        @id @default(uuid())
+  brand      String
+  model      String
+  year       Int
+  plate      String        @unique
+  type       VehicleType
+  status     VehicleStatus @default(available)
+  dailyRate  Float
+  features   String[]
+  image      String?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  // Relaciones
+  reservations Reservation[]
+
+  @@map("vehicles")
+}
+
+model Reservation {
+  id          String            @id @default(uuid())
+  clientId    String
+  vehicleId   String
+  startDate   DateTime
+  endDate     DateTime
+  days        Int
+  totalAmount Float
+  status      ReservationStatus @default(pending)
+  notes       String?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  createdBy   String
+  approvedBy  String?
+  approvedAt  DateTime?
+
+  // Relaciones
+  client   Client    @relation(fields: [clientId], references: [id])
+  vehicle  Vehicle   @relation(fields: [vehicleId], references: [id])
+  creator  User      @relation(fields: [createdBy], references: [id])
+  invoice  Invoice?
+  contract Contract?
+
+  @@map("reservations")
+}
+
+model Invoice {
+  id            String        @id @default(uuid())
+  reservationId String        @unique
+  clientId      String
+  amount        Float
+  tax           Float
+  total         Float
+  status        InvoiceStatus @default(pending)
+  issueDate     DateTime      @default(now())
+  dueDate       DateTime
+  paidDate      DateTime?
+  paymentMethod String?
+  createdBy     String
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // Relaciones
+  reservation Reservation @relation(fields: [reservationId], references: [id])
+  client      Client      @relation(fields: [clientId], references: [id])
+  creator     User        @relation(fields: [createdBy], references: [id])
+
+  @@map("invoices")
+}
+
+model Contract {
+  id            String         @id @default(uuid())
+  reservationId String         @unique
+  clientId      String
+  vehicleInfo   String
+  startDate     DateTime
+  endDate       DateTime
+  terms         String[]
+  signedDate    DateTime?
+  status        ContractStatus @default(draft)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  // Relaciones
+  reservation Reservation @relation(fields: [reservationId], references: [id])
+  client      Client      @relation(fields: [clientId], references: [id])
+
+  @@map("contracts")
+}
+
+// ==================== ENUMS ====================
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  OPERADOR
+  CLIENTE
+}
+
+enum Status {
+  active
+  inactive
+}
+
+enum ClientStatus {
+  active
+  inactive
+  pending
+}
+
+enum VehicleType {
+  sedan
+  suv
+  truck
+  van
+}
+
+enum VehicleStatus {
+  available
+  reserved
+  maintenance
+  rented
+}
+
+enum ReservationStatus {
+  pending
+  confirmed
+  completed
+  cancelled
+  rejected
+}
+
+enum InvoiceStatus {
+  pending
+  paid
+  overdue
+  cancelled
+}
+
+enum ContractStatus {
+  draft
+  active
+  completed
+  terminated
+}
