@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
 import { useForm } from '../hooks/useForm';
@@ -6,16 +6,26 @@ import { Card, Table, Button, Modal, Input, Select, SearchBar, Badge } from '../
 import { mockVehiculos } from '../data/mockData';
 import { Vehiculo } from '../types';
 import { validateForm } from '../utils/validation';
-import { formatCurrency } from '../utils/formatters';
+import { formatCurrency, convertUSDtoHNL } from '../utils/formatters';
 
 export const Vehiculos: React.FC = () => {
   const { currentUser } = useAuth();
   const { canCreate, canEdit } = usePermissions('vehiculos');
   const [vehiculos, setVehiculos] = useState<Vehiculo[]>(mockVehiculos);
   const [showModal, setShowModal] = useState(false);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [selectedVehiculo, setSelectedVehiculo] = useState<Vehiculo | null>(null);
   const [editingVehiculo, setEditingVehiculo] = useState<Vehiculo | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  
+  // Forzar recarga de datos actualizados
+  useEffect(() => {
+    setVehiculos(mockVehiculos);
+    console.log('Vehículos cargados:', mockVehiculos.length);
+  }, []);
 
   const { values, errors, handleChange, handleSubmit, resetForm, setFieldValue } = useForm<Partial<Vehiculo>>({
     initialValues: {
@@ -79,7 +89,65 @@ export const Vehiculos: React.FC = () => {
     setFieldValue('type', vehiculo.type);
     setFieldValue('status', vehiculo.status);
     setFieldValue('dailyRate', vehiculo.dailyRate);
+    setFieldValue('features', vehiculo.features || []);
+    setPreviewImage(vehiculo.image || null);
     setShowModal(true);
+  };
+
+  const openDetailsModal = (vehiculo: Vehiculo) => {
+    setSelectedVehiculo(vehiculo);
+    setShowDetailsModal(true);
+  };
+
+  // Manejar drag & drop de imágenes
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    
+    const files = e.dataTransfer.files;
+    if (files && files[0]) {
+      handleImageFile(files[0]);
+    }
+  };
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files[0]) {
+      handleImageFile(files[0]);
+    }
+  };
+
+  const handleImageFile = (file: File) => {
+    // Validar tamaño máximo de 10MB
+    const maxSize = 10 * 1024 * 1024; // 10MB en bytes
+    
+    if (!file.type.startsWith('image/')) {
+      alert('Por favor selecciona un archivo de imagen válido');
+      return;
+    }
+    
+    if (file.size > maxSize) {
+      alert(`La imagen es demasiado grande. Tamaño máximo: 10MB\nTamaño actual: ${(file.size / (1024 * 1024)).toFixed(2)}MB`);
+      return;
+    }
+    
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setPreviewImage(reader.result as string);
+      // En producción aquí subirías la imagen al backend
+      alert(`✅ Imagen cargada correctamente\n📦 Tamaño: ${(file.size / (1024 * 1024)).toFixed(2)}MB`);
+    };
+    reader.readAsDataURL(file);
   };
 
   const filteredVehiculos = useMemo(() => {
@@ -101,9 +169,29 @@ export const Vehiculos: React.FC = () => {
       key: 'vehicle',
       label: 'Vehículo',
       render: (vehiculo: Vehiculo) => (
-        <div>
-          <p className="font-medium text-gray-900 dark:text-gray-100">{vehiculo.brand} {vehiculo.model}</p>
-          <p className="text-sm text-gray-500 dark:text-gray-400">{vehiculo.plate}</p>
+        <div className="flex items-center gap-4">
+          {/* Imagen del vehículo */}
+          <div className="w-24 h-16 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-700 flex-shrink-0">
+            {vehiculo.image ? (
+              <img 
+                src={vehiculo.image} 
+                alt={`${vehiculo.brand} ${vehiculo.model}`}
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = 'https://via.placeholder.com/150x100?text=No+Image';
+                }}
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-gray-400 text-2xl">
+                🚗
+              </div>
+            )}
+          </div>
+          {/* Información del vehículo */}
+          <div>
+            <p className="font-medium text-gray-900 dark:text-gray-100">{vehiculo.brand} {vehiculo.model}</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">{vehiculo.plate}</p>
+          </div>
         </div>
       ),
     },
@@ -132,7 +220,12 @@ export const Vehiculos: React.FC = () => {
     ...(canViewRates ? [{
       key: 'dailyRate',
       label: 'Tarifa Diaria',
-      render: (vehiculo: Vehiculo) => formatCurrency(vehiculo.dailyRate),
+      render: (vehiculo: Vehiculo) => (
+        <div className="text-sm">
+          <p className="font-semibold text-gray-900 dark:text-white">{formatCurrency(vehiculo.dailyRate)} USD</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">{formatCurrency(convertUSDtoHNL(vehiculo.dailyRate), 'HNL')} HNL</p>
+        </div>
+      ),
     }] : []),
     {
       key: 'actions',
@@ -151,7 +244,11 @@ export const Vehiculos: React.FC = () => {
             </button>
           )}
           <button
-            className="text-gray-600 hover:text-gray-700 text-sm font-medium"
+            onClick={(e) => {
+              e.stopPropagation();
+              openDetailsModal(vehiculo);
+            }}
+            className="text-gray-600 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300 text-sm font-medium"
           >
             Ver detalles
           </button>
@@ -336,8 +433,302 @@ export const Vehiculos: React.FC = () => {
             step={0.01}
             placeholder="45.00"
           />
+          
+          {/* Campo de imagen con drag & drop y URL */}
+          <div className="space-y-3">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Imagen del Vehículo
+            </label>
+            
+            {/* Drag & Drop área */}
+            <div 
+              className={`border-2 border-dashed rounded-lg p-6 text-center transition-all cursor-pointer ${
+                isDragging 
+                  ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' 
+                  : 'border-gray-300 dark:border-gray-600 hover:border-primary-500'
+              }`}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              onClick={() => document.getElementById('vehicle-image')?.click()}
+            >
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                id="vehicle-image"
+                onChange={handleImageChange}
+              />
+              {previewImage ? (
+                <div className="space-y-2">
+                  <img 
+                    src={previewImage} 
+                    alt="Preview" 
+                    className="mx-auto h-32 w-auto rounded-lg object-contain"
+                  />
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Haz clic o arrastra otra imagen para cambiar
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="text-4xl">{isDragging ? '📥' : '📷'}</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">
+                    <p className="font-medium">
+                      {isDragging ? 'Suelta la imagen aquí' : 'Haz clic o arrastra una imagen'}
+                    </p>
+                    <p className="text-xs mt-1">Formatos: JPG, PNG, GIF, WebP. Máx: 10MB</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Campo de URL */}
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-gray-400">
+                🔗
+              </div>
+              <input
+                type="url"
+                placeholder="O pega la URL de la imagen aquí..."
+                className="w-full pl-10 pr-20 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-gray-800 dark:text-white text-sm"
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const input = e.target as HTMLInputElement;
+                    const url = input.value.trim();
+                    if (url) {
+                      setPreviewImage(url);
+                      input.value = '';
+                    }
+                  }
+                }}
+                id="image-url-input"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  const input = document.getElementById('image-url-input') as HTMLInputElement;
+                  const url = input.value.trim();
+                  if (url) {
+                    setPreviewImage(url);
+                    input.value = '';
+                  }
+                }}
+                className="absolute inset-y-0 right-0 px-3 text-primary-600 hover:text-primary-700 dark:text-primary-400 dark:hover:text-primary-300 text-sm font-medium"
+              >
+                Aplicar
+              </button>
+            </div>
+            
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              💡 Puedes subir un archivo (máx. 10MB), arrastrar una imagen o pegar una URL
+            </p>
+          </div>
+
+          {/* Características */}
+          <div className="space-y-3">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Características del Vehículo
+            </label>
+            
+            {/* Características predefinidas */}
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { value: 'Aire acondicionado', label: 'Aire acondicionado' },
+                { value: 'GPS', label: 'GPS' },
+                { value: 'Bluetooth', label: 'Bluetooth' },
+                { value: 'Cámara trasera', label: 'Cámara trasera' },
+                { value: '4x4', label: '4x4' },
+                { value: 'Asientos de cuero', label: 'Asientos de cuero' },
+                { value: 'USB', label: 'Puerto USB' },
+                { value: 'Control de crucero', label: 'Control de crucero' },
+              ].map(feature => (
+                <label key={feature.value} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={values.features?.includes(feature.value) || false}
+                    onChange={(e) => {
+                      const currentFeatures = values.features || [];
+                      if (e.target.checked) {
+                        setFieldValue('features', [...currentFeatures, feature.value]);
+                      } else {
+                        setFieldValue('features', currentFeatures.filter(f => f !== feature.value));
+                      }
+                    }}
+                    className="w-4 h-4 text-primary-600 rounded focus:ring-primary-500"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">{feature.label}</span>
+                </label>
+              ))}
+            </div>
+
+            {/* Agregar característica personalizada */}
+            <div className="border-t dark:border-gray-700 pt-3">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Agregar característica personalizada..."
+                  className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-gray-800 dark:text-white text-sm"
+                  onKeyPress={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const input = e.target as HTMLInputElement;
+                      const value = input.value.trim();
+                      if (value && !(values.features || []).includes(value)) {
+                        setFieldValue('features', [...(values.features || []), value]);
+                        input.value = '';
+                      }
+                    }
+                  }}
+                  id="custom-feature-input"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const input = document.getElementById('custom-feature-input') as HTMLInputElement;
+                    const value = input.value.trim();
+                    if (value && !(values.features || []).includes(value)) {
+                      setFieldValue('features', [...(values.features || []), value]);
+                      input.value = '';
+                    }
+                  }}
+                  className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors text-sm font-medium"
+                >
+                  Agregar
+                </button>
+              </div>
+            </div>
+
+            {/* Características seleccionadas */}
+            {(values.features && values.features.length > 0) && (
+              <div className="flex flex-wrap gap-2">
+                {values.features.map((feature, idx) => (
+                  <span
+                    key={idx}
+                    className="inline-flex items-center gap-1 px-3 py-1 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 text-sm rounded-full"
+                  >
+                    {feature}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFieldValue('features', values.features?.filter((_, i) => i !== idx));
+                      }}
+                      className="ml-1 text-primary-600 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-200"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
         </form>
       </Modal>
+
+      {/* Modal de Detalles del Vehículo */}
+      {selectedVehiculo && (
+        <Modal
+          isOpen={showDetailsModal}
+          onClose={() => {
+            setShowDetailsModal(false);
+            setSelectedVehiculo(null);
+          }}
+          title={`🚗 ${selectedVehiculo.brand} ${selectedVehiculo.model}`}
+          size="lg"
+        >
+          <div className="space-y-4">
+            {/* Imagen del vehículo */}
+            {selectedVehiculo.image && (
+              <div className="w-full h-64 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-700">
+                <img 
+                  src={selectedVehiculo.image} 
+                  alt={`${selectedVehiculo.brand} ${selectedVehiculo.model}`}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+            )}
+
+            {/* Información básica */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Marca</p>
+                <p className="font-semibold text-gray-900 dark:text-white">{selectedVehiculo.brand}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Modelo</p>
+                <p className="font-semibold text-gray-900 dark:text-white">{selectedVehiculo.model}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Año</p>
+                <p className="font-semibold text-gray-900 dark:text-white">{selectedVehiculo.year}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Placa</p>
+                <p className="font-semibold text-gray-900 dark:text-white font-mono">{selectedVehiculo.plate}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Tipo</p>
+                <p className="font-semibold text-gray-900 dark:text-white capitalize">{selectedVehiculo.type}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Estado</p>
+                <div className="mt-1">
+                  {(() => {
+                    const statusConfig = {
+                      available: { variant: 'success' as const, label: 'Disponible' },
+                      reserved: { variant: 'warning' as const, label: 'Reservado' },
+                      rented: { variant: 'info' as const, label: 'Rentado' },
+                      maintenance: { variant: 'danger' as const, label: 'Mantenimiento' },
+                    };
+                    const config = statusConfig[selectedVehiculo.status];
+                    return <Badge variant={config.variant}>{config.label}</Badge>;
+                  })()}
+                </div>
+              </div>
+            </div>
+
+            {/* Tarifa */}
+            {canViewRates && (
+              <div className="bg-primary-50 dark:bg-primary-900/20 p-4 rounded-lg">
+                <p className="text-sm text-gray-600 dark:text-gray-400">Tarifa Diaria</p>
+                <p className="text-2xl font-bold text-primary-600 dark:text-primary-400">
+                  {formatCurrency(selectedVehiculo.dailyRate)} USD
+                </p>
+                <p className="text-lg font-semibold text-primary-500 dark:text-primary-300">
+                  {formatCurrency(convertUSDtoHNL(selectedVehiculo.dailyRate), 'HNL')} HNL
+                </p>
+              </div>
+            )}
+
+            {/* Características */}
+            <div>
+              <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Características</p>
+              <div className="flex flex-wrap gap-2">
+                {selectedVehiculo.features.map((feature, idx) => (
+                  <span 
+                    key={idx}
+                    className="px-3 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm rounded-full"
+                  >
+                    {feature}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* Fecha de registro */}
+            <div className="pt-4 border-t dark:border-gray-700">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Registrado el: {new Date(selectedVehiculo.createdAt).toLocaleDateString('es-ES', {
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric'
+                })}
+              </p>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

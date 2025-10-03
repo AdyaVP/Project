@@ -52,14 +52,9 @@ export interface Vehiculo {
 
 // ==================== RESERVAS ====================
 export type ReservaStatus = 
-  | 'pending'           // Pre-reserva creada por Operador
-  | 'confirmed'         // Aprobada por Admin + anticipo pagado
-  | 'en_uso'            // Vehículo entregado al cliente
-  | 'por_devolver'      // Fecha próxima de devolución (alerta)
-  | 'devuelto'          // Cliente devolvió, pendiente factura final
-  | 'completed'         // Factura pagada y completada
-  | 'cancelled'         // Cancelada
-  | 'rejected';         // Rechazada por Admin
+  | 'pending'           // Pre-reserva creada por Operador, pendiente de aprobación
+  | 'confirmed'         // Aprobada por Admin/Super Admin
+  | 'cancelled';        // Cancelada o Rechazada
 
 export interface Reserva {
   id: string;
@@ -81,6 +76,13 @@ export interface Reserva {
   approvedBy?: string;
   approvedAt?: string;
   notes?: string;
+  inspeccionData?: {
+    kilometraje?: string;
+    nivelCombustible?: string;
+    observaciones?: string;
+    checklistInterior?: any;
+    checklistExterior?: any;
+  };
 }
 
 // ==================== FACTURAS ====================
@@ -116,6 +118,9 @@ export interface Contrato {
   signedDate?: string;
   status: 'draft' | 'active' | 'completed' | 'terminated';
   createdAt: string;
+  contratoData?: any; // Datos completos del formulario llenado por el Operador
+  firmaCliente?: string; // Firma digital del cliente
+  firmaRepresentante?: string; // Firma digital del representante
 }
 
 // ==================== DASHBOARD STATS ====================
@@ -145,19 +150,63 @@ export interface Anticipo {
 }
 
 // ==================== INSPECCIONES ====================
+export interface ChecklistInterior {
+  marcadorCombustible: boolean;
+  encendedor: boolean;
+  radioDiscos: boolean;
+  radioCassette: boolean;
+  radio: boolean;
+  alfombrasPiso: boolean;
+  tacometro: boolean;
+  luzAdvertencia: boolean;
+  vidriosManuales: boolean;
+  botonEncendido: boolean;
+  botonPuerta: boolean;
+}
+
+export interface ChecklistExterior {
+  antena: boolean;
+  copas: boolean;
+  retrovisores: boolean;
+  emblemas: boolean;
+  taponGasolina: boolean;
+  tapasBatea: boolean;
+  llantaRepuesto: boolean;
+  llantaMantenera: boolean;
+  llantaPasax: boolean;
+  puertaElevatriz: boolean;
+  frenoMano: boolean;
+}
+
 export interface Inspeccion {
   id: string;
   reservaId: string;
   vehiculoId: string;
+  vehiculoMarca: string;
+  vehiculoModelo: string;
+  vehiculoPlaca: string;
+  unidad: string;
   tipo: 'entrega' | 'devolucion';
   fecha: string;
+  hora: string;
   kilometraje: number;
   nivelCombustible: number; // 0-100%
+  checklistInterior: ChecklistInterior;
+  checklistExterior: ChecklistExterior;
   danos: Dano[];
+  danosVisuales?: {
+    ladoConductor: string[];
+    ladoPasajero: string[];
+    frente: string[];
+    atras: string[];
+    parabrisas: string[];
+  };
   fotos?: string[];
   observaciones?: string;
   inspeccionadoPor: string;
   firmadoPor?: string; // Cliente
+  firmaRepresentante?: string;
+  firmaCliente?: string;
 }
 
 export interface Dano {
@@ -200,4 +249,31 @@ export interface Devolucion {
   observaciones?: string;
   recibidoPor: string;
   aceptadoPor?: string; // Cliente
+}
+
+// ==================== MANTENIMIENTO ====================
+export type DamageStatus = 'en_revision' | 'reparado';
+export type DamageSeverity = 'leve' | 'moderado' | 'grave';
+
+export interface DamageDetail {
+  id: string;
+  descripcion: string;
+  tipo: string; // Rayón, Golpe, Faltante, etc.
+  severidad: DamageSeverity;
+  costo: number;
+}
+
+export interface DamageReport {
+  id: string;
+  vehiculoId: string;
+  vehiculoInfo: string; // "Toyota Corolla 2024 (ABC-123)"
+  clienteId: string;
+  clienteName: string;
+  fecha: string;
+  danos: DamageDetail[];
+  totalEstimado: number;
+  estado: DamageStatus;
+  createdBy: string;
+  reparadoFecha?: string;
+  facturaId?: string;
 }

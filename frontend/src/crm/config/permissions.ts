@@ -9,7 +9,6 @@ export const ROLE_PERMISSIONS: Record<Role, Record<string, Permission>> = {
     clientes: { module: 'clientes', canView: true, canCreate: true, canEdit: true, canDelete: true, canApprove: true },
     reservas: { module: 'reservas', canView: true, canCreate: true, canEdit: true, canDelete: true, canApprove: true },
     facturacion: { module: 'facturacion', canView: true, canCreate: true, canEdit: true, canDelete: true }, // Puede anular facturas
-    contratos: { module: 'contratos', canView: true, canCreate: true, canEdit: true, canDelete: true },
     mantenimiento: { module: 'mantenimiento', canView: true, canCreate: true, canEdit: true, canDelete: false }, // Gestión de vehículos dañados y mantenimiento
     perfil: { module: 'perfil', canView: true, canCreate: false, canEdit: true, canDelete: false },
   },
@@ -20,7 +19,6 @@ export const ROLE_PERMISSIONS: Record<Role, Record<string, Permission>> = {
     clientes: { module: 'clientes', canView: true, canCreate: true, canEdit: true, canDelete: false, canApprove: true },
     reservas: { module: 'reservas', canView: true, canCreate: true, canEdit: true, canDelete: false, canApprove: true },
     facturacion: { module: 'facturacion', canView: true, canCreate: true, canEdit: true, canDelete: true },
-    contratos: { module: 'contratos', canView: true, canCreate: true, canEdit: true, canDelete: false },
     mantenimiento: { module: 'mantenimiento', canView: true, canCreate: true, canEdit: true, canDelete: false }, // Gestión de vehículos dañados y mantenimiento
     perfil: { module: 'perfil', canView: true, canCreate: false, canEdit: true, canDelete: false },
   },
@@ -35,7 +33,6 @@ export const ROLE_PERMISSIONS: Record<Role, Record<string, Permission>> = {
     dashboard: { module: 'dashboard', canView: true, canCreate: false, canEdit: false, canDelete: false },
     reservas: { module: 'reservas', canView: true, canCreate: false, canEdit: false, canDelete: false }, // Solo sus reservas
     facturacion: { module: 'facturacion', canView: true, canCreate: false, canEdit: false, canDelete: false }, // Solo sus facturas
-    contratos: { module: 'contratos', canView: true, canCreate: false, canEdit: false, canDelete: false }, // Solo sus contratos
     perfil: { module: 'perfil', canView: true, canCreate: false, canEdit: true, canDelete: false },
   },
 };
@@ -109,6 +106,5 @@ export const MODULE_INFO: Record<string, ModuleInfo> = {
   reservas: { id: 'reservas', name: 'Reservas', path: '/crm/reservas', iconPlaceholder: '📅' },
   facturacion: { id: 'facturacion', name: 'Facturación', path: '/crm/facturacion', iconPlaceholder: '💰' },
   mantenimiento: { id: 'mantenimiento', name: 'Mantenimiento', path: '/crm/mantenimiento', iconPlaceholder: '🔧' },
-  contratos: { id: 'contratos', name: 'Contratos', path: '/crm/contratos', iconPlaceholder: '📄' },
   perfil: { id: 'perfil', name: 'Perfil', path: '/crm/perfil', iconPlaceholder: '⚙️' },
 };

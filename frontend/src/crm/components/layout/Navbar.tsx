@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { useTheme } from '../../context/ThemeContext';
+import { useSearch } from '../../context/SearchContext';
 import { SearchBar } from '../common';
+import { SearchResults } from '../common/SearchResults';
 
 interface NavbarProps {
   onMenuClick: () => void;
@@ -9,9 +10,13 @@ interface NavbarProps {
 
 export const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
   const { currentUser, logout } = useAuth();
-  const { toggleTheme, isDarkMode } = useTheme();
-  const [searchQuery, setSearchQuery] = useState('');
+  const { searchQuery, setSearchQuery, performSearch } = useSearch();
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value);
+    performSearch(value);
+  };
 
   if (!currentUser) return null;
 
@@ -34,27 +39,15 @@ export const Navbar: React.FC<NavbarProps> = ({ onMenuClick }) => {
 
         {/* Search & Actions */}
         <div className="flex items-center gap-2 sm:gap-4">
-          <SearchBar
-            value={searchQuery}
-            onChange={setSearchQuery}
-            placeholder="Buscar..."
-            className="hidden md:block w-48 lg:w-64"
-          />
-
-          {/* Theme Toggle */}
-          <button 
-            onClick={toggleTheme}
-            className="p-2 text-gray-400 hover:text-gray-600 dark:text-gray-300 dark:hover:text-white transition-colors rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
-            title={isDarkMode ? 'Modo claro' : 'Modo oscuro'}
-          >
-            <span className="text-xl">{isDarkMode ? '☀️' : '🌙'}</span>
-          </button>
-
-          {/* Notifications Placeholder */}
-          <button className="p-2 text-gray-400 hover:text-gray-600 dark:text-gray-300 dark:hover:text-white transition-colors relative rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700">
-            <span className="text-xl">🔔</span>
-            <span className="absolute top-1 right-1 w-2 h-2 bg-danger rounded-full"></span>
-          </button>
+          <div className="relative hidden md:block">
+            <SearchBar
+              value={searchQuery}
+              onChange={handleSearchChange}
+              placeholder="Buscar vehiculos, clientes, reservas..."
+              className="w-64 lg:w-80"
+            />
+            <SearchResults />
+          </div>
 
           {/* Profile Menu */}
           <div className="relative">

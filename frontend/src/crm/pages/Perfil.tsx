@@ -15,9 +15,8 @@ export const Perfil: React.FC = () => {
       email: currentUser?.email || '',
       phone: currentUser?.phone || '',
     },
-    onSubmit: (formValues) => {
+    onSubmit: () => {
       // En producción, aquí se enviaría al backend
-      console.log('Actualizando perfil:', formValues);
       setIsEditing(false);
       alert('Perfil actualizado correctamente');
     },
@@ -42,7 +41,6 @@ export const Perfil: React.FC = () => {
         return;
       }
       // En producción, aquí se enviaría al backend
-      console.log('Cambiando contraseña');
       alert('Contraseña actualizada correctamente');
       setShowPasswordChange(false);
       passwordForm.resetForm();

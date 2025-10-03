@@ -1,6 +1,7 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
+import { SearchProvider } from './context/SearchContext';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
 import { MainLayout } from './components/layout/MainLayout';
 import { Login } from './pages/Login';
@@ -17,7 +18,8 @@ const CRMRoutes: React.FC = () => {
   const { isAuthenticated } = useAuth();
 
   return (
-    <Routes>
+    <SearchProvider>
+      <Routes>
       {/* Ruta pública - Login */}
       <Route
         path="login"
@@ -120,6 +122,7 @@ const CRMRoutes: React.FC = () => {
       {/* 404 - Not Found */}
       <Route path="*" element={<Navigate to="/crm/login" replace />} />
     </Routes>
+    </SearchProvider>
   );
 };
 

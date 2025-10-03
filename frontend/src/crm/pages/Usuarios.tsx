@@ -11,7 +11,7 @@ import { canManageUser, ADMIN_ALLOWED_ROLES, SUPERADMIN_ALLOWED_ROLES } from '..
 
 export const Usuarios: React.FC = () => {
   const { currentUser } = useAuth();
-  const { canCreate, canEdit } = usePermissions('usuarios');
+  const { canCreate } = usePermissions('usuarios');
   const [usuarios, setUsuarios] = useState<User[]>(mockUsers);
   const [showModal, setShowModal] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
@@ -119,7 +119,8 @@ export const Usuarios: React.FC = () => {
     ? SUPERADMIN_ALLOWED_ROLES  // Super Admin puede crear todos los roles
     : ADMIN_ALLOWED_ROLES;      // Admin solo puede crear Operadores y Clientes
 
-  const columns = [
+  // Columnas base (sin acciones)
+  const baseColumns = [
     {
       key: 'user',
       label: 'Usuario',
@@ -167,33 +168,34 @@ export const Usuarios: React.FC = () => {
       label: 'Fecha de Registro',
       render: (user: User) => formatShortDate(user.createdAt),
     },
-    {
-      key: 'actions',
-      label: 'Acciones',
-      render: (user: User) => (
-        <div className="flex items-center gap-2">
-          {canEdit && (
-            <button
-              onClick={() => openEditModal(user)}
-              className="text-primary-600 hover:text-primary-700 text-sm font-medium"
-              disabled={currentUser?.role === 'ADMIN' && user.role === 'SUPER_ADMIN'}
-            >
-              Editar
-            </button>
-          )}
-          {canEdit && (
-            <button
-              onClick={() => handleDelete(user)}
-              className="text-danger hover:text-danger-dark text-sm font-medium"
-              disabled={currentUser?.role === 'ADMIN' && user.role === 'SUPER_ADMIN'}
-            >
-              Eliminar
-            </button>
-          )}
-        </div>
-      ),
-    },
   ];
+
+  // Columna de acciones (solo para SUPER_ADMIN)
+  const actionsColumn = {
+    key: 'actions',
+    label: 'Acciones',
+    render: (user: User) => (
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => openEditModal(user)}
+          className="text-primary-600 hover:text-primary-700 text-sm font-medium"
+        >
+          Editar
+        </button>
+        <button
+          onClick={() => handleDelete(user)}
+          className="text-danger hover:text-danger-dark text-sm font-medium"
+        >
+          Eliminar
+        </button>
+      </div>
+    ),
+  };
+
+  // Agregar columna de acciones solo si es SUPER_ADMIN
+  const columns = currentUser?.role === 'SUPER_ADMIN'
+    ? [...baseColumns, actionsColumn]
+    : baseColumns;
 
   return (
     <div className="space-y-6">

@@ -1,7 +1,26 @@
 // Utilidades de formato para mostrar datos
 
-export const formatCurrency = (amount: number): string => {
+// Tasa de cambio (actualizar según tasa actual)
+export const EXCHANGE_RATE = 24.50; // 1 USD = 24.50 HNL
+
+export const formatCurrency = (amount: number, currency: 'USD' | 'HNL' = 'USD'): string => {
+  if (currency === 'HNL') {
+    return `L. ${amount.toFixed(2)}`;
+  }
   return `$${amount.toFixed(2)}`;
+};
+
+export const formatCurrencyDual = (amountUSD: number): string => {
+  const amountHNL = amountUSD * EXCHANGE_RATE;
+  return `$${amountUSD.toFixed(2)} USD / L. ${amountHNL.toFixed(2)} HNL`;
+};
+
+export const convertUSDtoHNL = (amountUSD: number): number => {
+  return amountUSD * EXCHANGE_RATE;
+};
+
+export const convertHNLtoUSD = (amountHNL: number): number => {
+  return amountHNL / EXCHANGE_RATE;
 };
 
 export const formatDate = (date: string | Date): string => {

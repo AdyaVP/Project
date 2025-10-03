@@ -1,219 +1,264 @@
 import React, { useState, useMemo } from 'react';
-import { Card, Table, Badge, SearchBar, Button, Modal } from '../components/common';
-import { mockVehiculos } from '../data/mockData';
-import { Vehiculo } from '../types';
-import { formatShortDate, formatCurrency } from '../utils/formatters';
-
-// Tipo para reporte de daño (mock)
-interface ReporteDano {
-  id: string;
-  vehiculoId: string;
-  vehiculoInfo: string;
-  clienteNombre: string;
-  reservaId: string;
-  fecha: string;
-  danos: Array<{
-    ubicacion: string;
-    tipo: string;
-    descripcion: string;
-    gravedad: 'leve' | 'moderado' | 'grave';
-    costoEstimado: number;
-  }>;
-  estado: 'reportado' | 'en-revision' | 'reparado' | 'facturado';
-  totalEstimado: number;
-}
-
-// Mock de reportes de daños
-const mockReportes: ReporteDano[] = [
-  {
-    id: 'rep-001',
-    vehiculoId: 'veh-001',
-    vehiculoInfo: 'Toyota Corolla 2024 (ABC-123)',
-    clienteNombre: 'Juan Pérez',
-    reservaId: 'res-001',
-    fecha: '2024-10-15',
-    danos: [
-      {
-        ubicacion: 'Puerta trasera derecha',
-        tipo: 'Rayón',
-        descripcion: 'Rayón profundo de 15cm en pintura',
-        gravedad: 'moderado',
-        costoEstimado: 500,
-      },
-      {
-        ubicacion: 'Cajuela',
-        tipo: 'Faltante',
-        descripcion: 'No se encontró gato hidráulico',
-        gravedad: 'leve',
-        costoEstimado: 800,
-      },
-    ],
-    estado: 'en-revision',
-    totalEstimado: 1300,
-  },
-  {
-    id: 'rep-002',
-    vehiculoId: 'veh-002',
-    vehiculoInfo: 'Honda CR-V 2023 (XYZ-456)',
-    clienteNombre: 'María González',
-    reservaId: 'res-002',
-    fecha: '2024-10-20',
-    danos: [
-      {
-        ubicacion: 'Parachoques delantero',
-        tipo: 'Abolladura',
-        descripcion: 'Abolladura pequeña en esquina',
-        gravedad: 'leve',
-        costoEstimado: 350,
-      },
-    ],
-    estado: 'reparado',
-    totalEstimado: 350,
-  },
-];
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { usePermissions } from '../hooks/usePermissions';
+import { Card, Table, Button, Modal, SearchBar, Badge } from '../components/common';
+import { mockVehiculos, mockDamageReports } from '../data/mockData';
+import { Vehiculo, DamageReport, DamageDetail, DamageSeverity } from '../types';
+import { formatCurrency, formatShortDate, convertUSDtoHNL } from '../utils/formatters';
 
 export const Mantenimiento: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'vehiculos' | 'reportes'>('vehiculos');
+  const { currentUser } = useAuth();
+  const { canCreate, canEdit } = usePermissions('mantenimiento');
+  const navigate = useNavigate();
+  
+  const [activeTab, setActiveTab] = useState<'vehiculos' | 'reportes'>('reportes');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedReporte, setSelectedReporte] = useState<ReporteDano | null>(null);
-  const [showReporteModal, setShowReporteModal] = useState(false);
-
-  // Vehículos en mantenimiento o dañados
-  const vehiculosMantenimiento = useMemo(() => {
-    return mockVehiculos.filter(v => v.status === 'maintenance');
-  }, []);
+  const [damageReports, setDamageReports] = useState<DamageReport[]>(mockDamageReports);
+  const [selectedReport, setSelectedReport] = useState<DamageReport | null>(null);
+  const [originalReportId, setOriginalReportId] = useState<string>('');
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
+  const [showAddReportModal, setShowAddReportModal] = useState(false);
+  const [editingDamages, setEditingDamages] = useState<DamageDetail[]>([]);
+  const [newReport, setNewReport] = useState({
+    vehiculoId: '',
+    clienteId: '',
+    clienteName: '',
+    danos: [] as DamageDetail[],
+  });
 
   // Filtrar reportes
-  const filteredReportes = useMemo(() => {
-    if (!searchQuery) return mockReportes;
-    return mockReportes.filter(r =>
-      r.vehiculoInfo.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      r.clienteNombre.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      r.id.toLowerCase().includes(searchQuery.toLowerCase())
+  const filteredReports = useMemo(() => {
+    return damageReports.filter(report => {
+      const searchLower = searchQuery.toLowerCase();
+      return (
+        report.id.toLowerCase().includes(searchLower) ||
+        report.vehiculoInfo.toLowerCase().includes(searchLower) ||
+        report.clienteName.toLowerCase().includes(searchLower)
+      );
+    });
+  }, [damageReports, searchQuery]);
+
+  // Vehículos en mantenimiento
+  const vehiculosEnMantenimiento = mockVehiculos.filter(v => v.status === 'maintenance');
+
+  const getStatusBadge = (estado: string) => {
+    const config = {
+      en_revision: { variant: 'info' as const, label: 'En Revisión' },
+      reparado: { variant: 'success' as const, label: 'Reparado' },
+    };
+    return config[estado as keyof typeof config];
+  };
+
+  const getSeverityBadge = (severidad: DamageSeverity) => {
+    const config = {
+      leve: { variant: 'success' as const, label: 'Leve', color: 'bg-green-100 text-green-700' },
+      moderado: { variant: 'warning' as const, label: 'Moderado', color: 'bg-yellow-100 text-yellow-700' },
+      grave: { variant: 'danger' as const, label: 'Grave', color: 'bg-red-100 text-red-700' },
+    };
+    return config[severidad];
+  };
+
+  const openDetailsModal = (report: DamageReport) => {
+    setSelectedReport({...report});
+    setOriginalReportId(report.id); // Guardar ID original
+    setEditingDamages(JSON.parse(JSON.stringify(report.danos))); // Deep copy
+    setShowDetailsModal(true);
+  };
+
+  const handleUpdateBasicInfo = (field: keyof DamageReport, value: any) => {
+    if (selectedReport) {
+      setSelectedReport({ ...selectedReport, [field]: value });
+    }
+  };
+
+  const handleMarcarReparado = () => {
+    if (selectedReport && confirm('¿Marcar este reporte como reparado?')) {
+      setDamageReports(prev =>
+        prev.map(r =>
+          r.id === selectedReport.id
+            ? { ...r, estado: 'reparado', reparadoFecha: new Date().toISOString().split('T')[0] }
+            : r
+        )
+      );
+      setShowDetailsModal(false);
+      alert('Reporte marcado como reparado');
+    }
+  };
+
+  const handleGenerarFactura = () => {
+    if (selectedReport) {
+      // Navegar a facturación con los datos pre-cargados
+      alert(`Generando factura por ${formatCurrency(selectedReport.totalEstimado)}`);
+      navigate('/crm/facturacion');
+      setShowDetailsModal(false);
+    }
+  };
+
+  const handleUpdateDamages = () => {
+    if (selectedReport) {
+      const totalEstimado = editingDamages.reduce((sum, d) => sum + d.costo, 0);
+      const updatedReport = { 
+        ...selectedReport, 
+        danos: editingDamages, 
+        totalEstimado 
+      };
+      
+      // Usar originalReportId para encontrar el reporte correcto en caso de que hayan cambiado el ID
+      setDamageReports(prev =>
+        prev.map(r => r.id === originalReportId ? updatedReport : r)
+      );
+      setSelectedReport(updatedReport);
+      setOriginalReportId(updatedReport.id); // Actualizar el ID original
+      alert('Reporte actualizado correctamente');
+    }
+  };
+
+  const handleAddDamage = () => {
+    const newDamage: DamageDetail = {
+      id: `dmg-${Date.now()}`,
+      descripcion: '',
+      tipo: 'Rayón',
+      severidad: 'leve',
+      costo: 0,
+    };
+    setEditingDamages([...editingDamages, newDamage]);
+  };
+
+  const handleRemoveDamage = (id: string) => {
+    setEditingDamages(editingDamages.filter(d => d.id !== id));
+  };
+
+  const handleDamageChange = (id: string, field: keyof DamageDetail, value: any) => {
+    setEditingDamages(prev =>
+      prev.map(d => (d.id === id ? { ...d, [field]: value } : d))
     );
-  }, [searchQuery]);
-
-  const getEstadoBadge = (estado: string) => {
-    const config = {
-      'reportado': { variant: 'warning' as const, label: '📋 Reportado' },
-      'en-revision': { variant: 'info' as const, label: '🔍 En Revisión' },
-      'reparado': { variant: 'success' as const, label: '✅ Reparado' },
-      'facturado': { variant: 'default' as const, label: '💰 Facturado' },
-    };
-    return config[estado as keyof typeof config] || config.reportado;
   };
 
-  const getGravedadBadge = (gravedad: string) => {
-    const config = {
-      'leve': { variant: 'success' as const, label: '🟢 Leve' },
-      'moderado': { variant: 'warning' as const, label: '🟡 Moderado' },
-      'grave': { variant: 'danger' as const, label: '🔴 Grave' },
+  // Funciones para nuevo reporte
+  const handleAddDamageToNewReport = () => {
+    const newDamage: DamageDetail = {
+      id: `dmg-${Date.now()}`,
+      descripcion: '',
+      tipo: 'Rayón',
+      severidad: 'leve',
+      costo: 0,
     };
-    return config[gravedad as keyof typeof config] || config.leve;
+    setNewReport(prev => ({ ...prev, danos: [...prev.danos, newDamage] }));
   };
 
-  const columnsVehiculos = [
-    {
-      key: 'vehicle',
-      label: 'Vehículo',
-      render: (vehiculo: Vehiculo) => (
-        <div>
-          <p className="font-medium text-gray-900 dark:text-white">{vehiculo.brand} {vehiculo.model}</p>
-          <p className="text-sm text-gray-500 dark:text-gray-400">{vehiculo.plate}</p>
-        </div>
-      ),
-    },
-    { key: 'year', label: 'Año' },
-    {
-      key: 'type',
-      label: 'Tipo',
-      render: (vehiculo: Vehiculo) => (
-        <span className="capitalize text-gray-900 dark:text-white">{vehiculo.type}</span>
-      ),
-    },
-    {
-      key: 'status',
-      label: 'Estado',
-      render: () => (
-        <Badge variant="warning">🔧 Mantenimiento</Badge>
-      ),
-    },
-    {
-      key: 'actions',
-      label: 'Acciones',
-      render: () => (
-        <div className="flex gap-2">
-          <button className="text-primary-600 hover:text-primary-700 text-sm font-medium">
-            Ver Historial
-          </button>
-          <button className="text-success hover:text-success-dark text-sm font-medium">
-            Marcar Disponible
-          </button>
-        </div>
-      ),
-    },
-  ];
+  const handleRemoveDamageFromNewReport = (id: string) => {
+    setNewReport(prev => ({ ...prev, danos: prev.danos.filter(d => d.id !== id) }));
+  };
 
-  const columnsReportes = [
+  const handleNewDamageChange = (id: string, field: keyof DamageDetail, value: any) => {
+    setNewReport(prev => ({
+      ...prev,
+      danos: prev.danos.map(d => (d.id === id ? { ...d, [field]: value } : d)),
+    }));
+  };
+
+  const handleCreateReport = () => {
+    if (!newReport.vehiculoId || !newReport.clienteName || newReport.danos.length === 0) {
+      alert('Por favor completa todos los campos y agrega al menos un daño');
+      return;
+    }
+
+    const selectedVehiculo = mockVehiculos.find(v => v.id === newReport.vehiculoId);
+    if (!selectedVehiculo) return;
+
+    const totalEstimado = newReport.danos.reduce((sum, d) => sum + d.costo, 0);
+    
+    const report: DamageReport = {
+      id: `rep-${Date.now().toString().slice(-3)}`,
+      vehiculoId: newReport.vehiculoId,
+      vehiculoInfo: `${selectedVehiculo.brand} ${selectedVehiculo.model} ${selectedVehiculo.year} (${selectedVehiculo.plate})`,
+      clienteId: newReport.clienteId || 'cli-temp',
+      clienteName: newReport.clienteName,
+      fecha: new Date().toISOString().split('T')[0],
+      danos: newReport.danos,
+      totalEstimado,
+      estado: 'en_revision',
+      createdBy: currentUser?.id || 'admin',
+    };
+
+    setDamageReports(prev => [report, ...prev]);
+    setShowAddReportModal(false);
+    setNewReport({ vehiculoId: '', clienteId: '', clienteName: '', danos: [] });
+    alert('Reporte creado exitosamente');
+  };
+
+  // Columnas para tabla de reportes
+  const reportColumns = [
     {
       key: 'id',
-      label: 'ID Reporte',
-      render: (reporte: ReporteDano) => (
-        <span className="font-mono text-sm text-gray-900 dark:text-white">{reporte.id}</span>
+      label: 'ID REPORTE',
+      width: '10%',
+      render: (report: DamageReport) => (
+        <p className="font-mono text-sm text-gray-900 dark:text-white">{report.id}</p>
       ),
     },
     {
       key: 'fecha',
-      label: 'Fecha',
-      render: (reporte: ReporteDano) => formatShortDate(reporte.fecha),
+      label: 'FECHA',
+      render: (report: DamageReport) => formatShortDate(report.fecha),
     },
     {
       key: 'vehiculo',
-      label: 'Vehículo',
-      render: (reporte: ReporteDano) => (
+      label: 'VEHÍCULO',
+      render: (report: DamageReport) => (
         <div>
-          <p className="font-medium text-gray-900 dark:text-white">{reporte.vehiculoInfo}</p>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Cliente: {reporte.clienteNombre}</p>
+          <p className="font-medium text-gray-900 dark:text-white text-sm">
+            {report.vehiculoInfo.split('(')[0].trim()}
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Cliente: {report.clienteName}
+          </p>
         </div>
       ),
     },
     {
       key: 'danos',
-      label: 'Daños Reportados',
-      render: (reporte: ReporteDano) => (
-        <div className="text-sm">
-          <p className="text-gray-900 dark:text-white">{reporte.danos.length} daño(s)</p>
-          {reporte.danos.map((dano, idx) => (
-            <p key={idx} className="text-gray-500 dark:text-gray-400">{dano.ubicacion}</p>
+      label: 'DAÑOS REPORTADOS',
+      render: (report: DamageReport) => (
+        <div className="space-y-1">
+          {report.danos.slice(0, 2).map((dano, idx) => (
+            <p key={idx} className="text-sm text-gray-700 dark:text-gray-300">
+              {report.danos.length > 1 ? `${idx + 1}.` : ''} {dano.descripcion.substring(0, 30)}
+              {dano.descripcion.length > 30 ? '...' : ''}
+            </p>
           ))}
+          {report.danos.length > 2 && (
+            <p className="text-xs text-gray-500">+{report.danos.length - 2} más</p>
+          )}
         </div>
       ),
     },
     {
-      key: 'total',
-      label: 'Costo Estimado',
-      render: (reporte: ReporteDano) => (
-        <p className="font-semibold text-gray-900 dark:text-white">{formatCurrency(reporte.totalEstimado)}</p>
+      key: 'costo',
+      label: 'COSTO ESTIMADO',
+      render: (report: DamageReport) => (
+        <div className="text-sm">
+          <p className="font-semibold text-gray-900 dark:text-white">{formatCurrency(report.totalEstimado)} USD</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">{formatCurrency(convertUSDtoHNL(report.totalEstimado), 'HNL')} HNL</p>
+        </div>
       ),
     },
     {
       key: 'estado',
-      label: 'Estado',
-      render: (reporte: ReporteDano) => {
-        const config = getEstadoBadge(reporte.estado);
+      label: 'ESTADO',
+      render: (report: DamageReport) => {
+        const config = getStatusBadge(report.estado);
         return <Badge variant={config.variant}>{config.label}</Badge>;
       },
     },
     {
       key: 'actions',
-      label: 'Acciones',
-      render: (reporte: ReporteDano) => (
+      label: 'ACCIONES',
+      render: (report: DamageReport) => (
         <button
-          onClick={() => {
-            setSelectedReporte(reporte);
-            setShowReporteModal(true);
-          }}
-          className="text-primary-600 hover:text-primary-700 text-sm font-medium"
+          onClick={() => openDetailsModal(report)}
+          className="text-primary-600 hover:text-primary-700 dark:text-primary-400 text-sm font-medium"
         >
           Ver Detalles
         </button>
@@ -221,232 +266,519 @@ export const Mantenimiento: React.FC = () => {
     },
   ];
 
+  // Columnas para tabla de vehículos
+  const vehiculoColumns = [
+    {
+      key: 'vehiculo',
+      label: 'Vehículo',
+      render: (vehiculo: Vehiculo) => (
+        <div className="flex items-center gap-3">
+          {vehiculo.image && (
+            <img
+              src={vehiculo.image}
+              alt={`${vehiculo.brand} ${vehiculo.model}`}
+              className="w-16 h-12 rounded object-cover"
+            />
+          )}
+          <div>
+            <p className="font-medium text-gray-900 dark:text-white">
+              {vehiculo.brand} {vehiculo.model}
+            </p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">{vehiculo.plate}</p>
+          </div>
+        </div>
+      ),
+    },
+    { key: 'year', label: 'Año' },
+    {
+      key: 'type',
+      label: 'Tipo',
+      render: (v: Vehiculo) => <span className="capitalize">{v.type}</span>,
+    },
+  ];
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">🔧 Mantenimiento</h1>
-        <p className="text-gray-600 dark:text-gray-400">
-          Gestión de vehículos en mantenimiento y reportes de daños
-        </p>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-yellow-100 dark:bg-yellow-900/20 rounded-xl flex items-center justify-center text-2xl">
-              🔧
-            </div>
-            <div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">En Mantenimiento</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">{vehiculosMantenimiento.length}</p>
-            </div>
-          </div>
-        </Card>
-        <Card>
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-red-100 dark:bg-red-900/20 rounded-xl flex items-center justify-center text-2xl">
-              📋
-            </div>
-            <div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Reportes de Daños</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">{mockReportes.length}</p>
-            </div>
-          </div>
-        </Card>
-        <Card>
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/20 rounded-xl flex items-center justify-center text-2xl">
-              🔍
-            </div>
-            <div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">En Revisión</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                {mockReportes.filter(r => r.estado === 'en-revision').length}
-              </p>
-            </div>
-          </div>
-        </Card>
-        <Card>
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-green-100 dark:bg-green-900/20 rounded-xl flex items-center justify-center text-2xl">
-              ✅
-            </div>
-            <div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Reparados</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">
-                {mockReportes.filter(r => r.estado === 'reparado').length}
-              </p>
-            </div>
-          </div>
-        </Card>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">Mantenimiento</h1>
+          <p className="text-gray-600 dark:text-gray-400">Gestión de vehículos dañados y reportes</p>
+        </div>
+        {canCreate && activeTab === 'reportes' && (
+          <Button onClick={() => setShowAddReportModal(true)} icon="➕">
+            Nuevo Reporte
+          </Button>
+        )}
       </div>
 
       {/* Tabs */}
       <div className="border-b border-gray-200 dark:border-gray-700">
-        <nav className="-mb-px flex space-x-8">
+        <nav className="flex gap-8">
           <button
             onClick={() => setActiveTab('vehiculos')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+            className={`pb-4 px-1 border-b-2 font-medium text-sm transition-colors ${
               activeTab === 'vehiculos'
-                ? 'border-primary-600 text-primary-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
             }`}
           >
-            🚗 Vehículos ({vehiculosMantenimiento.length})
+            🚗 Vehículos ({vehiculosEnMantenimiento.length})
           </button>
           <button
             onClick={() => setActiveTab('reportes')}
-            className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+            className={`pb-4 px-1 border-b-2 font-medium text-sm transition-colors ${
               activeTab === 'reportes'
-                ? 'border-primary-600 text-primary-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300'
+                ? 'border-primary-500 text-primary-600 dark:text-primary-400'
+                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400'
             }`}
           >
-            📋 Reportes de Daños ({mockReportes.length})
+            📋 Reportes de Daños ({damageReports.length})
           </button>
         </nav>
       </div>
 
-      {/* Tab: Vehículos en Mantenimiento */}
-      {activeTab === 'vehiculos' && (
+      {/* Content */}
+      {activeTab === 'vehiculos' ? (
         <Card>
           <div className="mb-4">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Vehículos en Mantenimiento</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-400">Vehículos que requieren reparación o servicio</p>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+              Vehículos en Mantenimiento
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              Lista de vehículos actualmente fuera de servicio
+            </p>
           </div>
-          {vehiculosMantenimiento.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="text-6xl mb-4">✅</div>
-              <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
-                No hay vehículos en mantenimiento
-              </h3>
-              <p className="text-gray-500 dark:text-gray-400">
-                Todos los vehículos están disponibles o en uso
-              </p>
-            </div>
-          ) : (
-            <Table
-              data={vehiculosMantenimiento}
-              columns={columnsVehiculos}
-              emptyMessage="No hay vehículos en mantenimiento"
-            />
-          )}
+          <Table
+            data={vehiculosEnMantenimiento}
+            columns={vehiculoColumns}
+            emptyMessage="No hay vehículos en mantenimiento"
+          />
         </Card>
-      )}
-
-      {/* Tab: Reportes de Daños */}
-      {activeTab === 'reportes' && (
+      ) : (
         <>
+          {/* Search */}
           <Card>
             <SearchBar
               value={searchQuery}
               onChange={setSearchQuery}
               placeholder="Buscar por vehículo, cliente o ID..."
-              className="mb-4"
+              className="w-full"
             />
           </Card>
+
+          {/* Stats */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card>
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-yellow-100 dark:bg-yellow-900 rounded-xl flex items-center justify-center text-2xl">
+                  ⏳
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">En Revisión</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                    {damageReports.filter(r => r.estado === 'en_revision').length}
+                  </p>
+                </div>
+              </div>
+            </Card>
+            <Card>
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-green-100 dark:bg-green-900 rounded-xl flex items-center justify-center text-2xl">
+                  ✅
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Reparados</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                    {damageReports.filter(r => r.estado === 'reparado').length}
+                  </p>
+                </div>
+              </div>
+            </Card>
+            <Card>
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900 rounded-xl flex items-center justify-center text-2xl">
+                  💰
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Total Estimado</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                    {formatCurrency(damageReports.reduce((sum, r) => sum + r.totalEstimado, 0))} USD
+                  </p>
+                  <p className="text-lg font-semibold text-gray-600 dark:text-gray-400">
+                    {formatCurrency(convertUSDtoHNL(damageReports.reduce((sum, r) => sum + r.totalEstimado, 0)), 'HNL')} HNL
+                  </p>
+                </div>
+              </div>
+            </Card>
+          </div>
+
+          {/* Reportes Table */}
           <Card>
             <div className="mb-4">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Reportes de Daños</h3>
-              <p className="text-sm text-gray-600 dark:text-gray-400">Daños reportados por Operadores durante inspecciones</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Daños reportados por Operadores durante inspecciones
+              </p>
             </div>
             <Table
-              data={filteredReportes}
-              columns={columnsReportes}
-              emptyMessage="No hay reportes de daños"
+              data={filteredReports}
+              columns={reportColumns}
+              emptyMessage="No se encontraron reportes de daños"
             />
           </Card>
         </>
       )}
 
-      {/* Modal: Detalle de Reporte */}
-      <Modal
-        isOpen={showReporteModal}
-        onClose={() => {
-          setShowReporteModal(false);
-          setSelectedReporte(null);
-        }}
-        title="📋 Detalle del Reporte de Daños"
-        size="xl"
-      >
-        {selectedReporte && (
-          <div className="space-y-6">
-            {/* Info General */}
-            <div className="grid grid-cols-2 gap-4 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-              <div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">ID Reporte</p>
-                <p className="font-mono font-semibold text-gray-900 dark:text-white">{selectedReporte.id}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Fecha</p>
-                <p className="font-medium text-gray-900 dark:text-white">{formatShortDate(selectedReporte.fecha)}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Vehículo</p>
-                <p className="font-medium text-gray-900 dark:text-white">{selectedReporte.vehiculoInfo}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Cliente</p>
-                <p className="font-medium text-gray-900 dark:text-white">{selectedReporte.clienteNombre}</p>
-              </div>
-              <div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Estado</p>
-                {(() => {
-                  const config = getEstadoBadge(selectedReporte.estado);
-                  return <Badge variant={config.variant}>{config.label}</Badge>;
-                })()}
-              </div>
-              <div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Total Estimado</p>
-                <p className="text-xl font-bold text-gray-900 dark:text-white">{formatCurrency(selectedReporte.totalEstimado)}</p>
-              </div>
-            </div>
-
-            {/* Lista de Daños */}
-            <div>
-              <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">Daños Detallados</h4>
-              <div className="space-y-3">
-                {selectedReporte.danos.map((dano, idx) => (
-                  <div key={idx} className="p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex-1">
-                        <p className="font-medium text-gray-900 dark:text-white">{dano.ubicacion}</p>
-                        <p className="text-sm text-gray-500 dark:text-gray-400">{dano.tipo}</p>
-                      </div>
-                      {(() => {
-                        const config = getGravedadBadge(dano.gravedad);
-                        return <Badge variant={config.variant}>{config.label}</Badge>;
-                      })()}
-                    </div>
-                    <p className="text-sm text-gray-600 dark:text-gray-300 mb-2">{dano.descripcion}</p>
-                    <p className="text-lg font-semibold text-primary-600">
-                      {formatCurrency(dano.costoEstimado)}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Acciones */}
-            <div className="flex justify-end gap-2 pt-4 border-t border-gray-200 dark:border-gray-700">
-              <Button variant="secondary" onClick={() => setShowReporteModal(false)}>
+      {/* Modal de Detalles del Reporte */}
+      {selectedReport && (
+        <Modal
+          isOpen={showDetailsModal}
+          onClose={() => {
+            setShowDetailsModal(false);
+            setSelectedReport(null);
+          }}
+          title="📋 Detalle del Reporte de Daños"
+          size="lg"
+          footer={
+            <div className="flex gap-2 justify-end">
+              <Button variant="secondary" onClick={() => setShowDetailsModal(false)}>
                 Cerrar
               </Button>
-              {selectedReporte.estado === 'en-revision' && (
+              {selectedReport.estado === 'en_revision' && canEdit && (
                 <>
-                  <Button variant="primary">
-                    ✅ Marcar como Reparado
+                  <Button onClick={handleMarcarReparado} className="bg-purple-600 hover:bg-purple-700">
+                    🔧 Marcar como Reparado
                   </Button>
-                  <Button variant="primary">
-                    💰 Generar Factura
+                  <Button onClick={handleGenerarFactura} className="bg-green-600 hover:bg-green-700">
+                    💵 Generar Factura
                   </Button>
                 </>
               )}
             </div>
+          }
+        >
+          <div className="space-y-4">
+            {/* Información básica - SIEMPRE EDITABLE */}
+            <div className="grid grid-cols-2 gap-4 pb-4 border-b dark:border-gray-700">
+              <div>
+                <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  ID Reporte
+                </label>
+                <input
+                  type="text"
+                  value={selectedReport.id}
+                  onChange={(e) => handleUpdateBasicInfo('id', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg font-mono focus:ring-2 focus:ring-primary-500 dark:bg-gray-800 dark:text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  Fecha
+                </label>
+                <input
+                  type="date"
+                  value={selectedReport.fecha}
+                  onChange={(e) => handleUpdateBasicInfo('fecha', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 dark:bg-gray-800 dark:text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  Vehículo
+                </label>
+                <select
+                  value={selectedReport.vehiculoId}
+                  onChange={(e) => {
+                    const vehiculo = mockVehiculos.find(v => v.id === e.target.value);
+                    if (vehiculo) {
+                      handleUpdateBasicInfo('vehiculoId', e.target.value);
+                      handleUpdateBasicInfo('vehiculoInfo', `${vehiculo.brand} ${vehiculo.model} ${vehiculo.year} (${vehiculo.plate})`);
+                    }
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 dark:bg-gray-800 dark:text-white"
+                >
+                  {mockVehiculos.map(v => (
+                    <option key={v.id} value={v.id}>
+                      {v.brand} {v.model} {v.year} ({v.plate})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  Cliente
+                </label>
+                <input
+                  type="text"
+                  value={selectedReport.clienteName}
+                  onChange={(e) => handleUpdateBasicInfo('clienteName', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 dark:bg-gray-800 dark:text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  Estado
+                </label>
+                <select
+                  value={selectedReport.estado}
+                  onChange={(e) => handleUpdateBasicInfo('estado', e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 dark:bg-gray-800 dark:text-white"
+                >
+                  <option value="en_revision">En Revisión</option>
+                  <option value="reparado">Reparado</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  Total Estimado
+                </label>
+                <p className="text-2xl font-bold text-primary-600 dark:text-primary-400">
+                  {formatCurrency(editingDamages.reduce((sum, d) => sum + d.costo, 0))} USD
+                </p>
+                <p className="text-lg font-semibold text-primary-500 dark:text-primary-300">
+                  {formatCurrency(convertUSDtoHNL(editingDamages.reduce((sum, d) => sum + d.costo, 0)), 'HNL')} HNL
+                </p>
+              </div>
+            </div>
+
+            {/* Daños Detallados */}
+            <div>
+              <div className="flex justify-between items-center mb-3">
+                <h4 className="font-semibold text-gray-900 dark:text-white">Daños Detallados</h4>
+                {canEdit && (
+                  <div className="flex gap-2">
+                    <Button onClick={handleAddDamage}>
+                      ➕ Agregar Daño
+                    </Button>
+                    <Button variant="secondary" onClick={handleUpdateDamages}>
+                      💾 Guardar Cambios
+                    </Button>
+                  </div>
+                )}
+              </div>
+              <div className="space-y-3">
+                {editingDamages.map((dano, idx) => (
+                  <div
+                    key={dano.id}
+                    className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700"
+                  >
+                    {canEdit ? (
+                      <div className="space-y-3">
+                        <div className="flex justify-between items-start">
+                          <p className="font-medium text-gray-700 dark:text-gray-300">Daño #{idx + 1}</p>
+                          <button
+                            onClick={() => handleRemoveDamage(dano.id)}
+                            className="text-red-600 hover:text-red-700 text-sm"
+                          >
+                            ✕ Eliminar
+                          </button>
+                        </div>
+                        <input
+                          type="text"
+                          value={dano.descripcion}
+                          onChange={(e) => handleDamageChange(dano.id, 'descripcion', e.target.value)}
+                          placeholder="Descripción del daño"
+                          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:text-white text-sm"
+                        />
+                        <div className="grid grid-cols-3 gap-2">
+                          <input
+                            type="text"
+                            value={dano.tipo}
+                            onChange={(e) => handleDamageChange(dano.id, 'tipo', e.target.value)}
+                            placeholder="Tipo"
+                            className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:text-white text-sm"
+                          />
+                          <select
+                            value={dano.severidad}
+                            onChange={(e) => handleDamageChange(dano.id, 'severidad', e.target.value)}
+                            className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:text-white text-sm"
+                          >
+                            <option value="leve">Leve</option>
+                            <option value="moderado">Moderado</option>
+                            <option value="grave">Grave</option>
+                          </select>
+                          <input
+                            type="number"
+                            value={dano.costo}
+                            onChange={(e) => handleDamageChange(dano.id, 'costo', parseFloat(e.target.value) || 0)}
+                            placeholder="Costo"
+                            step="0.01"
+                            className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:text-white text-sm"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="flex-1">
+                            <p className="font-medium text-gray-900 dark:text-white">{dano.descripcion}</p>
+                            <p className="text-sm text-gray-600 dark:text-gray-400">{dano.tipo}</p>
+                          </div>
+                          <span
+                            className={`px-3 py-1 rounded-full text-sm font-medium ${
+                              getSeverityBadge(dano.severidad).color
+                            }`}
+                          >
+                            {getSeverityBadge(dano.severidad).label}
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-lg font-bold text-primary-600 dark:text-primary-400">{formatCurrency(dano.costo)} USD</p>
+                          <p className="text-sm font-semibold text-primary-500 dark:text-primary-300">{formatCurrency(convertUSDtoHNL(dano.costo), 'HNL')} HNL</p>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
-        )}
+        </Modal>
+      )}
+
+      {/* Modal de Nuevo Reporte */}
+      <Modal
+        isOpen={showAddReportModal}
+        onClose={() => {
+          setShowAddReportModal(false);
+          setNewReport({ vehiculoId: '', clienteId: '', clienteName: '', danos: [] });
+        }}
+        title="➕ Nuevo Reporte de Daños"
+        size="lg"
+        footer={
+          <div className="flex gap-2 justify-end">
+            <Button variant="secondary" onClick={() => setShowAddReportModal(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={handleCreateReport}>
+              Crear Reporte
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          {/* Seleccionar Vehículo */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Seleccionar Vehículo *
+            </label>
+            <select
+              value={newReport.vehiculoId}
+              onChange={(e) => setNewReport(prev => ({ ...prev, vehiculoId: e.target.value }))}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-gray-800 dark:text-white"
+            >
+              <option value="">-- Seleccionar vehículo --</option>
+              {mockVehiculos.map(v => (
+                <option key={v.id} value={v.id}>
+                  {v.brand} {v.model} {v.year} - {v.plate}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Nombre del Cliente */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Nombre del Cliente *
+            </label>
+            <input
+              type="text"
+              value={newReport.clienteName}
+              onChange={(e) => setNewReport(prev => ({ ...prev, clienteName: e.target.value }))}
+              placeholder="Ej: Juan Pérez"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 dark:bg-gray-800 dark:text-white"
+            />
+          </div>
+
+          {/* Daños */}
+          <div>
+            <div className="flex justify-between items-center mb-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Daños Reportados *
+              </label>
+              <Button onClick={handleAddDamageToNewReport}>
+                ➕ Agregar Daño
+              </Button>
+            </div>
+
+            <div className="space-y-3">
+              {newReport.danos.length === 0 ? (
+                <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-8 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
+                  No hay daños agregados. Haz clic en "➕ Agregar Daño" para empezar
+                </p>
+              ) : (
+                newReport.danos.map((dano, idx) => (
+                  <div
+                    key={dano.id}
+                    className="p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700"
+                  >
+                    <div className="flex justify-between items-start mb-3">
+                      <p className="font-medium text-gray-700 dark:text-gray-300">Daño #{idx + 1}</p>
+                      <button
+                        onClick={() => handleRemoveDamageFromNewReport(dano.id)}
+                        className="text-red-600 hover:text-red-700 text-sm"
+                      >
+                        ✕ Eliminar
+                      </button>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <input
+                        type="text"
+                        value={dano.descripcion}
+                        onChange={(e) => handleNewDamageChange(dano.id, 'descripcion', e.target.value)}
+                        placeholder="Descripción del daño"
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:text-white text-sm"
+                      />
+                      <div className="grid grid-cols-3 gap-2">
+                        <input
+                          type="text"
+                          value={dano.tipo}
+                          onChange={(e) => handleNewDamageChange(dano.id, 'tipo', e.target.value)}
+                          placeholder="Tipo (Rayón, Golpe...)"
+                          className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:text-white text-sm"
+                        />
+                        <select
+                          value={dano.severidad}
+                          onChange={(e) => handleNewDamageChange(dano.id, 'severidad', e.target.value)}
+                          className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:text-white text-sm"
+                        >
+                          <option value="leve">Leve</option>
+                          <option value="moderado">Moderado</option>
+                          <option value="grave">Grave</option>
+                        </select>
+                        <input
+                          type="number"
+                          value={dano.costo}
+                          onChange={(e) => handleNewDamageChange(dano.id, 'costo', parseFloat(e.target.value) || 0)}
+                          placeholder="Costo $"
+                          step="0.01"
+                          className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 dark:bg-gray-700 dark:text-white text-sm"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Total Preview */}
+          {newReport.danos.length > 0 && (
+            <div className="bg-primary-50 dark:bg-primary-900/20 p-4 rounded-lg">
+              <div className="flex justify-between items-center">
+                <p className="text-sm text-gray-600 dark:text-gray-400">Total Estimado:</p>
+                <p className="text-2xl font-bold text-primary-600 dark:text-primary-400">
+                  {formatCurrency(newReport.danos.reduce((sum, d) => sum + d.costo, 0))} USD
+                </p>
+                <p className="text-lg font-semibold text-primary-500 dark:text-primary-300">
+                  {formatCurrency(convertUSDtoHNL(newReport.danos.reduce((sum, d) => sum + d.costo, 0)), 'HNL')} HNL
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
       </Modal>
     </div>
   );

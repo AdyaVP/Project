@@ -1,12 +1,33 @@
 import React, { useState, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { Card, Table, SearchBar, Badge } from '../components/common';
-import { Contrato } from '../types';
+import { Card, Table, SearchBar, Badge, Button, Modal } from '../components/common';
+import { ContratoArrendamiento } from '../components/forms';
+import { Contrato, Reserva } from '../types';
+import { mockReservas } from '../data/mockData';
 import { formatShortDate } from '../utils/formatters';
 
 export const Contratos: React.FC = () => {
   const { currentUser } = useAuth();
+  const isOperador = currentUser?.role === 'OPERADOR';
+  
+  // Si NO es OPERADOR, redirigir o mostrar error
+  if (!isOperador) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="text-6xl mb-4">🔒</div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Acceso Restringido</h1>
+          <p className="text-gray-600 dark:text-gray-400">
+            Esta sección es exclusiva para OPERADORES.
+          </p>
+        </div>
+      </div>
+    );
+  }
+  
   const [searchQuery, setSearchQuery] = useState('');
+  const [showModal, setShowModal] = useState(false);
+  const [selectedReserva, setSelectedReserva] = useState<Reserva | null>(null);
 
   // Mock data de contratos
   const mockContratos: Contrato[] = [
@@ -50,7 +71,39 @@ export const Contratos: React.FC = () => {
     },
   ];
 
-  const [contratos] = useState<Contrato[]>(mockContratos);
+  const [contratos, setContratos] = useState<Contrato[]>(mockContratos);
+
+  // Obtener reservas confirmadas que no tienen contrato
+  const reservasConfirmadas = useMemo(() => {
+    return mockReservas.filter(r => 
+      r.status === 'confirmed' && 
+      !contratos.some(c => c.reservaId === r.id)
+    );
+  }, [contratos]);
+
+  // Función para crear contrato
+  const handleCrearContrato = (contratoData: any) => {
+    if (!selectedReserva) return;
+
+    const nuevoContrato: Contrato = {
+      id: `CTR-${Date.now()}`,
+      reservaId: selectedReserva.id,
+      clienteId: selectedReserva.clienteId,
+      clienteName: selectedReserva.clienteName,
+      vehiculoInfo: selectedReserva.vehiculoInfo,
+      startDate: selectedReserva.startDate,
+      endDate: selectedReserva.endDate,
+      terms: ['Contrato de arrendamiento completo'],
+      status: 'active',
+      createdAt: new Date().toISOString(),
+      ...contratoData,
+    };
+
+    setContratos([nuevoContrato, ...contratos]);
+    setShowModal(false);
+    setSelectedReserva(null);
+    alert('✅ Contrato creado exitosamente');
+  };
 
   const filteredContratos = useMemo(() => {
     let filtered = contratos;
@@ -165,16 +218,81 @@ export const Contratos: React.FC = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-1">Contratos</h1>
-          <p className="text-gray-600">
-            {currentUser?.role === 'CLIENTE' 
-              ? 'Consulta tus contratos de alquiler' 
-              : 'Gestión de contratos de alquiler'}
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">Contratos de Arrendamiento</h1>
+          <p className="text-gray-600 dark:text-gray-400">
+            Gestiona contratos para reservas confirmadas
           </p>
         </div>
       </div>
 
-      {/* Stats */}
+      {/* Alerta si hay reservas confirmadas sin contrato */}
+      {reservasConfirmadas.length > 0 ? (
+        <Card>
+          <div className="bg-green-50 dark:bg-green-900/20 border-2 border-green-400 dark:border-green-600 rounded-lg p-4">
+            <p className="font-semibold text-green-800 dark:text-green-200">
+              ✅ Tienes {reservasConfirmadas.length} reserva(s) aprobada(s) lista(s) para contrato
+            </p>
+            <p className="text-sm text-green-700 dark:text-green-300 mt-1">
+              Las reservas han pasado la inspección y fueron aprobadas por el Admin. Puedes crear sus contratos.
+            </p>
+          </div>
+        </Card>
+      ) : (
+        <Card>
+          <div className="bg-blue-50 dark:bg-blue-900/20 border-2 border-blue-400 dark:border-blue-600 rounded-lg p-4 text-center">
+            <p className="font-semibold text-blue-800 dark:text-blue-200">
+              📋 No hay reservas pendientes de contrato
+            </p>
+            <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
+              Todas las reservas confirmadas ya tienen su contrato generado.
+            </p>
+          </div>
+        </Card>
+      )}
+
+      {/* Lista de Reservas Confirmadas sin Contrato */}
+      {reservasConfirmadas.length > 0 && (
+        <Card>
+          <div className="mb-4">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Reservas Listas para Contrato</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400">Haz click en "Crear Contrato" para generar el documento</p>
+          </div>
+          <div className="space-y-3">
+            {reservasConfirmadas.map(reserva => (
+              <div
+                key={reserva.id}
+                className="border-2 border-gray-200 dark:border-gray-700 rounded-lg p-4 hover:border-primary-500 dark:hover:border-primary-600 transition-colors"
+              >
+                <div className="flex justify-between items-start">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <h4 className="font-semibold text-gray-900 dark:text-white text-lg">{reserva.clienteName}</h4>
+                      <Badge variant="success">✅ Aprobada</Badge>
+                    </div>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">
+                      🚗 {reserva.vehiculoInfo}
+                    </p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">
+                      📅 {formatShortDate(reserva.startDate)} → {formatShortDate(reserva.endDate)} ({reserva.days} días)
+                    </p>
+                    <p className="text-sm font-semibold text-primary-600 dark:text-primary-400">
+                      💰 Total: L. {reserva.totalAmount.toFixed(2)}
+                    </p>
+                  </div>
+                  <Button onClick={() => {
+                    setSelectedReserva(reserva);
+                    setShowModal(true);
+                  }}>
+                    📄 Crear Contrato
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* Stats de Contratos Existentes */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <div className="flex items-center gap-3">
@@ -182,8 +300,8 @@ export const Contratos: React.FC = () => {
               📝
             </div>
             <div>
-              <p className="text-sm text-gray-500">Borradores</p>
-              <p className="text-3xl font-bold text-gray-900">{stats.draft}</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Borradores</p>
+              <p className="text-3xl font-bold text-gray-900 dark:text-white">{stats.draft}</p>
             </div>
           </div>
         </Card>
@@ -193,8 +311,8 @@ export const Contratos: React.FC = () => {
               ✅
             </div>
             <div>
-              <p className="text-sm text-gray-500">Activos</p>
-              <p className="text-3xl font-bold text-gray-900">{stats.active}</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Activos</p>
+              <p className="text-3xl font-bold text-gray-900 dark:text-white">{stats.active}</p>
             </div>
           </div>
         </Card>
@@ -204,8 +322,8 @@ export const Contratos: React.FC = () => {
               📋
             </div>
             <div>
-              <p className="text-sm text-gray-500">Completados</p>
-              <p className="text-3xl font-bold text-gray-900">{stats.completed}</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Completados</p>
+              <p className="text-3xl font-bold text-gray-900 dark:text-white">{stats.completed}</p>
             </div>
           </div>
         </Card>
@@ -223,8 +341,8 @@ export const Contratos: React.FC = () => {
       {/* Table */}
       <Card>
         <div className="mb-4">
-          <h3 className="text-lg font-semibold text-gray-900">Contratos</h3>
-          <p className="text-sm text-gray-600">Listado de todos los contratos</p>
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Contratos</h3>
+          <p className="text-sm text-gray-600 dark:text-gray-400">Listado de todos los contratos</p>
         </div>
         <Table
           data={filteredContratos}
@@ -232,6 +350,32 @@ export const Contratos: React.FC = () => {
           emptyMessage="No se encontraron contratos"
         />
       </Card>
+
+      {/* Modal para crear contrato */}
+      <Modal
+        isOpen={showModal}
+        onClose={() => {
+          setShowModal(false);
+          setSelectedReserva(null);
+        }}
+        title={selectedReserva ? `Contrato - ${selectedReserva.clienteName}` : "Crear Contrato"}
+        size="xl"
+      >
+        {selectedReserva && (
+          <ContratoArrendamiento
+            reservaId={selectedReserva.id}
+            clienteName={selectedReserva.clienteName}
+            vehiculoInfo={selectedReserva.vehiculoInfo}
+            startDate={selectedReserva.startDate}
+            endDate={selectedReserva.endDate}
+            onSubmit={handleCrearContrato}
+            onCancel={() => {
+              setShowModal(false);
+              setSelectedReserva(null);
+            }}
+          />
+        )}
+      </Modal>
     </div>
   );
 };

@@ -8,3 +8,4 @@ export { Card } from './Card';
 export { Table } from './Table';
 export { StatCard } from './StatCard';
 export { SearchBar } from './SearchBar';
+export { SearchResults } from './SearchResults';

@@ -56,4 +56,33 @@
   .badge-warning {
     @apply bg-warning-light text-warning-dark px-3 py-1 rounded-full text-sm font-medium;
   }
+
+  /* Clases para formularios comunes */
+  .form-section {
+    @apply border-2 border-gray-300 dark:border-gray-600 rounded-lg p-4 bg-blue-50 dark:bg-blue-900/20;
+  }
+
+  .form-title {
+    @apply text-lg font-bold mb-3 text-gray-900 dark:text-white;
+  }
+
+  .form-input {
+    @apply w-full border-b px-1 dark:bg-gray-800 focus:outline-none focus:border-blue-500;
+  }
+
+  .table-cell {
+    @apply border border-gray-400 dark:border-gray-600 p-2;
+  }
+
+  .table-cell-header {
+    @apply border border-gray-400 dark:border-gray-600 p-2 bg-gray-100 dark:bg-gray-700 font-semibold;
+  }
+
+  .signature-canvas {
+    @apply cursor-crosshair bg-white w-full border-2 border-gray-400 dark:border-gray-600 rounded;
+  }
+
+  .clear-signature-btn {
+    @apply text-xs bg-red-500 text-white px-3 py-1 rounded hover:bg-red-600;
+  }
 }

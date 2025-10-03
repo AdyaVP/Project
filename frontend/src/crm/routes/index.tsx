@@ -10,7 +10,6 @@ import { Vehiculos } from '../pages/Vehiculos';
 import { Clientes } from '../pages/Clientes';
 import { Reservas } from '../pages/Reservas';
 import { Facturacion } from '../pages/Facturacion';
-import { Contratos } from '../pages/Contratos';
 import { Perfil } from '../pages/Perfil';
 
 const AppRoutes: React.FC = () => {
@@ -22,12 +21,16 @@ const AppRoutes: React.FC = () => {
         {/* Ruta pública - Login */}
         <Route
           path="/login"
-          element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <Login />}
+          element={isAuthenticated ? <Navigate to="/crm/dashboard" replace /> : <Login />}
+        />
+        <Route
+          path="/crm/login"
+          element={isAuthenticated ? <Navigate to="/crm/dashboard" replace /> : <Login />}
         />
 
-        {/* Rutas protegidas */}
+        {/* Rutas protegidas con prefijo /crm */}
         <Route
-          path="/"
+          path="/crm"
           element={
             <ProtectedRoute>
               <MainLayout />
@@ -35,7 +38,7 @@ const AppRoutes: React.FC = () => {
           }
         >
           {/* Redirect raíz a dashboard */}
-          <Route index element={<Navigate to="/dashboard" replace />} />
+          <Route index element={<Navigate to="dashboard" replace />} />
 
           {/* Dashboard - Todos los roles */}
           <Route
@@ -97,16 +100,6 @@ const AppRoutes: React.FC = () => {
             }
           />
 
-          {/* Contratos - Super Admin, Admin y Cliente (solo sus contratos) */}
-          <Route
-            path="contratos"
-            element={
-              <ProtectedRoute module="contratos">
-                <Contratos />
-              </ProtectedRoute>
-            }
-          />
-
           {/* Perfil - Todos los roles */}
           <Route
             path="perfil"
@@ -118,8 +111,11 @@ const AppRoutes: React.FC = () => {
           />
         </Route>
 
+        {/* Redirect raíz a /crm */}
+        <Route path="/" element={<Navigate to="/crm/dashboard" replace />} />
+        
         {/* 404 - Not Found */}
-        <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        <Route path="*" element={<Navigate to="/crm/dashboard" replace />} />
       </Routes>
     </BrowserRouter>
   );
